@@ -30,6 +30,7 @@ def Newton(F, x0, y0, eps, N):
     else:
         raise ValueError(f"no convergence in {N} steps.")
 
+# Fonction Newton qui écrit pas à pas dans un fichier. Peut s'avérer utile pour tracer des graphes.
 def Newton_steps(F, x0, y0, eps, N,file):
     with open(file,"a") as data:
         J_f = J(F)
@@ -45,28 +46,40 @@ def Newton_steps(F, x0, y0, eps, N,file):
         else:
             raise ValueError(f"no convergence in {N} steps.")
 
-#Level curve fonctionne, reste à l'empêcher de faire plusieurs tours. Problème, la fonction rebondit aux croisements et fait des aller retours  
-def level_curve(f,f_cont, x, y, delta=0.1, N=150, eps=0.01):
+#Level curve fonctionne. Problème: la fonction rebondit aux croisements et y fait des aller retours.
+def level_curve(f,f_cont, x, y, N=150, eps=0.01):
     tab = np.zeros(shape = (2,N), dtype = float)
     tab[0,0] = x
+    x_start = x
     tab[1,0] = y
+    y_start = y
+    global x0 
+    global y0
     for i in range(1,N):
         grad_f = grad(f)
         g = grad_f(x,y)
         g_norm = delta*g/np.linalg.norm(g)
         J_f = J(f_cont)
         x,y = Newton(f_cont,x+g_norm[1],y-g_norm[0],eps,N)
+        # J'empêche la fonction de faire plusieurs tours de courbe de niveau.
+        if abs(x-x_start) < delta/2 and abs(y-y_start) < delta/2:
+            break_index = i
+            tab = tab[:,:i]
+            break
         tab[0,i] = x
         tab[1,i] = y
-        global x0 
-        global y0
+        # Déclarer les points obetnus en global permet de les garder facilement pour la boucle suivante,
+        # pour calculer la contrainte du cercle sans prise de tête avec les arguments qui posent problème
+        # dans le calcul du jacobien.
         x0,y0 = x,y
     return tab
 
-
-def contrainte_cercle(x,y,delta=0.1):
+# J'implémente la contrainte pour que le point reste sur le cercle de centre le point précédent de rayon delta. La méthode de Newton
+# cherchera donc un point exclusivement sur ce cercle. Garantit la distance entre les points de la courbe de niveau.
+def contrainte_cercle(x,y):
     return (x-x0)**2+(y-y0)**2-delta**2
 
+# Fonctions de référence.
 def f1(x1,x2):
     x1 = np.array(x1)
     x2 = np.array(x2)
@@ -75,15 +88,30 @@ def f1(x1,x2):
 def f2(x1, x2):
     return (x1 - 1)**2 + (x1 - x2**2)**2
 
-# J'implémente la contrainte pour que le point reste sur le cercle de centre le point précédent de rayon delta
-def fbis(x,y,delta = 0.1,c=2.0):
-    return np.array([f2(x,y)-c,contrainte_cercle(x,y,delta)])
+def f3(x1, x2):
+    return np.sin(x1 + x2) - np.cos(x1 * x2) - 1 + 0.001 * (x1 * x1 + x2 * x2)
+ 
+# Fonctions modifiées avec la contrainte première bissectrice.
+def f1_start(x1,x2):
+    return np.array([f1(x1,x2)-c,x1-x2])
 
-# Fonction f1 modifiée avec la contrainte première bissectrice
-def f(x1,x2,c=2.0):
+def f2_start(x1,x2):
     return np.array([f2(x1,x2)-c,x1-x2])
 
-# Dessin courbes de niveau et points calculés mis dans un array
+def f3_start(x1,x2):
+    return np.array([f3(x1,x2)-c,x1-x2])
+
+# Fonctions étendues avec la contrainte du cercle.
+def f1_cont(x,y):
+    return np.array([f1(x,y)-c,contrainte_cercle(x,y)])
+
+def f2_cont(x,y):
+    return np.array([f2(x,y)-c,contrainte_cercle(x,y)])
+
+def f3_cont(x,y):
+    return np.array([f3(x,y)-c,contrainte_cercle(x,y)])
+
+# Dessin courbes de niveau et points calculés mis dans un array (2,N).
 def display_contour(f, x, y, levels,array,title):
     X, Y = np.meshgrid(x, y)
     Z = f(X, Y)
@@ -101,11 +129,18 @@ def display_contour(f, x, y, levels,array,title):
     plt.title(title)
     plt.show()
 
-
-x = 0.5
-y = 0.5
-eps = 0.001
+# Déclaration du point de départ de la recherche de courbe de niveau et des différents paramètres utiles au programme.
+# J'ai passés la valeur c de la ligne de niveau et l'écart delta en global pour plus de clarté dans mon code et éviter les arguments
+# récurrents et inutiles.
+x = 2.0
+y = 2.0
+eps = 0.01
 N = 100
+global c
+global delta
+c = -2.4
+delta = 0.1
+
 """
 #Analyse de l'écart entre la solution exacte et l'approximation en fonction du pt de départ
 with open("Newton_test.txt","w") as data:
@@ -125,7 +160,6 @@ for i in list:
 display_contour(f1,x=np.linspace(-1.0, 1.0, 100),y=np.linspace(-1.0, 1.0, 100),levels=10,file ="Newton_steps.txt",title="Méthode de Newton pour les points (0.8,0.8) et (-1.0,-1.0)"+"\n"+"Fonction quadratique")
 """
 #Détermination des courbes de niveau
-x0,y0 = Newton(f,x,y,eps,N)
-c = 0.8
-tableau = level_curve(f1,fbis,x0,y0)
-display_contour(f2,x=np.linspace(-1.0, 3.0, 100),y=np.linspace(-2.0, 2.0, 100),levels=[2**i for i in range(-3, 8)],array=tableau,title="Méthode de Newton pour les points (0.8,0.8) et (-1.0,-1.0)"+"\n"+"Fonction quadratique")
+x0,y0 = Newton(f3_start,x,y,eps,N)
+tableau = level_curve(f3,f3_cont,x0,y0)
+display_contour(f3,x=np.linspace(-5.0, 5.0, 100),y=np.linspace(-5.0, 5.0, 100),levels=5 ,array=tableau,title="Méthode de Newton pour les points (0.8,0.8) et (-1.0,-1.0)"+"\n"+"Fonction quadratique")
